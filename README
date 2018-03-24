@@ -1,1 +1,8 @@
-demonstration of nix as a build system with dynamic dependencies
+Demonstration of nix as a build system with dynamic dependencies.
+
+This implements the example from 2.3 in Build systems a la Carte paper.
+
+- example/default.nix is the implementation of the rules.
+- demo.sh is example invocation intended to show that minimality and dynamism are followed.
+- demo.sh.expected-output is its expected output: one can see that modifications
+to LICENSE file don't cause a rebuild until after LICENSE line is added to docs.txt.
