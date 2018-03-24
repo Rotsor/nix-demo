@@ -34,11 +34,11 @@ in
 # 
 #   run_script :: Script -> Path
 #
-let run_script = script : derivation {
+let run_script = name : script : derivation {
   system = "x86_64-linux"; # also works on Windows+WSL
   name = "script-output"; # name is not used for anything important
   builder = "${busybox}/bin/sh";
-  args = [ "-c" script ];
+  args = [ "-c" "echo RUNNING: ${name}; ${script}" ];
 }; in
 
 # concatenate two files
@@ -46,7 +46,7 @@ let run_script = script : derivation {
 #   cat :: Path -> Path -> Path
 #
 let concat = file1 : file2 :
-  run_script "echo RUNNING: cat ${file1} ${file2}; ${busybox}/bin/cat ${file1} ${file2} > $out";
+  run_script "cat" "${busybox}/bin/cat ${file1} ${file2} > $out";
 in
 
 # collect a bunch of loose files into one directory
@@ -54,10 +54,9 @@ in
 #   construct_directory :: [{ name :: Basename, value :: Path }] -> Path
 #
 let construct_directory = files :
-  run_script (
+  run_script "construct-directory" (
     builtins.concatStringsSep "; "
       ([
-      "echo RUNNING: collecting files: ${builtins.concatStringsSep " " (map (file : file.name) files)}"
       "${busybox}/bin/mkdir $out"
       "cd $out"
       ] ++
@@ -71,9 +70,8 @@ in
 let tar = files :
   let directory = construct_directory files; in
   let names = map (file : "${file.name}") files; in
-  run_script
+  run_script "tar"
   ''
-    echo RUNNING: tar
     cd ${directory}
     ${gnutar}/bin/tar -cf "$out" ${builtins.concatStringsSep " " names}
   '';
