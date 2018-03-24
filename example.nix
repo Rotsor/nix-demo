@@ -3,70 +3,106 @@ let nixpkgs = import <nixpkgs> {}; in
 let busybox = nixpkgs.busybox; in
 let gnutar = nixpkgs.gnutar; in
 
-let concat = file1 : file2 : derivation {
-  system = "x86_64-linux";
-  name = "concatenated";
-  builder = "${busybox}/bin/sh";
-  args = [ "-c" "echo RUNNING: concat ${file1} ${file2}; ${busybox}/bin/cat ${file1} ${file2} > $out" ];
-}; in
-let other_files = {
+# All the input files that we need.
+# We abuse the record type to serve as a Map.
+# It's surprisingly very suitable for that.
+#
+#   input_files :: Map Basename Path
+#
+let input_files = {
   "rubbish.bin" = ./rubbish.bin;
   "README" = ./README;
   "LICENSE" = ./LICENSE;
+  "docs.txt" = ./docs.txt;
+  "bins.txt" = ./bins.txt;
 }; in
 
+
+# Lookup in [input_files]
+#
+#  input_file :: Basename -> Path
+#
+let input_file =
+  name : builtins.getAttr name input_files;
+in
+
+# the only form of derivation that we will need
+# is a script that reads some hard-coded inputs and writes
+# its output into $out.
+# This function takes such a script and returns the
+# path to the result. (which is going to be built lazily)
+# 
+#   run_script :: Script -> Path
+#
+let run_script = script : derivation {
+  system = "x86_64-linux"; # also works on Windows+WSL
+  name = "script-output"; # name is not used for anything important
+  builder = "${busybox}/bin/sh";
+  args = [ "-c" script ];
+}; in
+
+# concatenate two files
+#
+#   cat :: Path -> Path -> Path
+#
+let concat = file1 : file2 :
+  run_script "echo RUNNING: cat ${file1} ${file2}; ${busybox}/bin/cat ${file1} ${file2} > $out";
+in
+
+# collect a bunch of loose files into one directory
+#
+#   construct_directory :: [{ name :: Basename, value :: Path }] -> Path
+#
 let construct_directory = files :
-  let build_script =
+  run_script (
     builtins.concatStringsSep "; "
       ([
       "echo RUNNING: collecting files: ${builtins.concatStringsSep " " (map (file : file.name) files)}"
       "${busybox}/bin/mkdir $out"
       "cd $out"
       ] ++
-      map (file : "${busybox}/bin/cp ${file.value} ${file.name}") files);
-  in
-  derivation
-  {
-    system = "x86_64-linux";
-    name = "constructed";
-    builder = "${busybox}/bin/sh";
-    args = [ "-c" build_script ];
-  };
+      map (file : "${busybox}/bin/cp ${file.value} ${file.name}") files));
 in
 
+# create a tar archive
+#
+#   tar :: [{ name :: Basename, value :: Path }] -> Path
+#
 let tar = files :
   let directory = construct_directory files; in
-  let s = (
-      builtins.concatStringsSep " " (
-        [
-         "echo RUNNING: tar;"
-         "cd ${directory};"
-         "${gnutar}/bin/tar -cf $out" ]
-        ++
-        map (file : "${file.name}") files)); in
-  derivation {
-    system = "x86_64-linux";
-    name = "tarred";
-    builder = "${busybox}/bin/sh";
-    args = [ "-c" s ];
-  }
- ;
+  let names = map (file : "${file.name}") files; in
+  run_script
+  ''
+    echo RUNNING: tar
+    cd ${directory}
+    ${gnutar}/bin/tar -cf "$out" ${builtins.concatStringsSep " " names}
+  '';
 in
 
-let attrsToList = e : map (name : { name = name; value = builtins.getAttr name e; }) (builtins.attrNames e); in
-
+# Split a multiplne string into individual lines.
+#
+#   lines :: String -> [ String ]
+#
 let concatMap = f: list: builtins.concatLists (map f list); in
-let linesQ = s :
-  let split = builtins.split "\n" s; in
-  concatMap (s : if builtins.isList s || s == "" || s == "\n" then [] else [s]) split
-  ;
+let lines = s :
+  concatMap
+    (s : if builtins.isList s || s == "" || s == "\n" then [] else [s])
+    (builtins.split "\n" s);
 in
 
-let result_txt = concat ./bins.txt ./docs.txt; in
+#
+#   release_txt :: Path
+#
+let release_txt = concat (input_file "bins.txt") (input_file "docs.txt"); in
+
+#
+#   release_tar :: Path
+#
 let release_tar =
-  let lines = linesQ (builtins.readFile result_txt); in
+  let release_files = lines (builtins.readFile release_txt); in
   tar (
     map (name :
-      { name = name; value = builtins.getAttr name other_files; }) lines);
+      { name = name; value = input_file name; })
+    release_files);
 in
 release_tar
