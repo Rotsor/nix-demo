@@ -32,7 +32,7 @@ in
 # This function takes such a script and returns the
 # path to the result. (which is going to be built lazily)
 # 
-#   run_script :: Script -> Path
+#   run_script :: String -> Script -> Path
 #
 let run_script = name : script : derivation {
   system = "x86_64-linux"; # also works on Windows+WSL
