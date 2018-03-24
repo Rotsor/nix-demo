@@ -77,7 +77,7 @@ let tar = files :
   '';
 in
 
-# Split a multiplne string into individual lines.
+# Split a multiline string into individual lines.
 #
 #   lines :: String -> [ String ]
 #
